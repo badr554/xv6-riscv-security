@@ -35,6 +35,7 @@ int             filestat(struct file*, uint64 addr);
 int             filewrite(struct file*, uint64, int n);
 
 // fs.c
+int checkperm(struct inode*, int);
 void            fsinit(int);
 int             dirlink(struct inode*, char*, uint);
 struct inode*   dirlookup(struct inode*, char*, uint*);
@@ -76,7 +77,16 @@ int             pipewrite(struct pipe*, uint64, int);
 int             printf(char*, ...) __attribute__ ((format (printf, 1, 2)));
 void            panic(char*) __attribute__((noreturn));
 void            printfinit(void);
-
+// passwd.c
+int checkpasswd(const char*, const char*);
+int useradd(const char*, const char*);
+int userdel(const char*);
+int passwd(const char*, const char*);
+int get_uid_by_username(const char*);
+// audit.c
+void audit_init(void);
+void audit_log(int, int, int, uint);
+int audit_read_entries(uint64, int, struct proc*);
 // proc.c
 int             cpuid(void);
 void            kexit(int);

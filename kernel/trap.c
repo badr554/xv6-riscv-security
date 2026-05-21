@@ -16,6 +16,27 @@ void kernelvec();
 
 extern int devintr();
 
+static char *
+trapname(uint64 scause)
+{
+  switch(scause){
+  case 0: return "Instruction address misaligned";
+  case 1: return "Instruction access fault";
+  case 2: return "Illegal instruction";
+  case 3: return "Breakpoint";
+  case 4: return "Load address misaligned";
+  case 5: return "Load access fault";
+  case 6: return "Store/AMO address misaligned";
+  case 7: return "Store/AMO access fault";
+  case 8: return "Environment call from U-mode";
+  case 9: return "Environment call from S-mode";
+  case 12: return "Instruction page fault";
+  case 13: return "Load page fault";
+  case 15: return "Store/AMO page fault";
+  default: return "Unknown trap";
+  }
+}
+
 void
 trapinit(void)
 {
@@ -29,10 +50,10 @@ trapinithart(void)
   w_stvec((uint64)kernelvec);
 }
 
+
 //
 // handle an interrupt, exception, or system call from user space.
-// called from, and returns to, trampoline.S
-// return value is user satp for trampoline.S to switch to.
+// called from trampoline.S
 //
 uint64
 usertrap(void)
@@ -60,6 +81,8 @@ usertrap(void)
     // sepc points to the ecall instruction,
     // but we want to return to the next instruction.
     p->trapframe->epc += 4;
+   // audit log every syscall into ring buffer
+audit_log(p->pid, p->uid, p->trapframe->a7, ticks);
 
     // an interrupt will change sepc, scause, and sstatus,
     // so enable only now that we're done with those registers.
@@ -72,8 +95,8 @@ usertrap(void)
             vmfault(p->pagetable, r_stval(), (r_scause() == 13)? 1 : 0) != 0) {
     // page fault on lazily-allocated page
   } else {
-    printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
-    printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
+    printf("usertrap(): %s (scause 0x%lx)\n", trapname(r_scause()), r_scause());
+    printf("            pid=%d uid=%d sepc=0x%lx stval=0x%lx\n", p->pid, p->uid, r_sepc(), r_stval());
     setkilled(p);
   }
 
@@ -147,7 +170,12 @@ kerneltrap()
 
   if((which_dev = devintr()) == 0){
     // interrupt or trap from an unknown source
-    printf("scause=0x%lx sepc=0x%lx stval=0x%lx\n", scause, r_sepc(), r_stval());
+    struct proc *p = myproc();
+    printf("kerneltrap(): %s (scause 0x%lx)\n", trapname(scause), scause);
+    if(p)
+      printf("              pid=%d uid=%d sepc=0x%lx stval=0x%lx\n", p->pid, p->uid, r_sepc(), r_stval());
+    else
+      printf("              sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
     panic("kerneltrap");
   }
 

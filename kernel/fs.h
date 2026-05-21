@@ -29,13 +29,19 @@ struct superblock {
 #define MAXFILE (NDIRECT + NINDIRECT)
 
 // On-disk inode structure
+// Total size = 128 bytes (1024 / 128 = 8 inodes per block)
+// Layout: 4 shorts(8) + 3 ushorts(6) + 2 implicit align pad + uint size(4) + addrs(52) + pad(56) = 128
 struct dinode {
   short type;           // File type
   short major;          // Major device number (T_DEVICE only)
   short minor;          // Minor device number (T_DEVICE only)
   short nlink;          // Number of links to inode in file system
+  ushort mode;          // Permission bits (e.g. 0644)
+  ushort uid;           // Owner user id
+  ushort gid;           // Owner group id
   uint size;            // Size of file (bytes)
   uint addrs[NDIRECT+1];   // Data block addresses
+  short pad[28];        // Padding to reach 128 bytes (divisor of BSIZE)
 };
 
 // Inodes per block.
@@ -59,4 +65,3 @@ struct dirent {
   ushort inum;
   char name[DIRSIZ] __attribute__((nonstring));
 };
-

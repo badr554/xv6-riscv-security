@@ -86,6 +86,9 @@ struct proc {
   struct spinlock lock;
 
   // p->lock must be held when using these:
+  int uid;
+  int gid;
+  char username[16];
   enum procstate state;        // Process state
   void *chan;                  // If non-zero, sleeping on chan
   int killed;                  // If non-zero, have been killed

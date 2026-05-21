@@ -6,7 +6,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "vm.h"
-
+#include "syscall.h"
 uint64
 sys_exit(void)
 {
@@ -106,4 +106,74 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+// login(username, password) -> uid on success, -1 on failure
+uint64
+sys_login(void)
+{
+  char user[16], pass[32];
+  argstr(0, user, sizeof(user));
+  argstr(1, pass, sizeof(pass));
+  int uid = checkpasswd(user, pass);
+  struct proc *p = myproc();
+  if(uid >= 0){
+    p->uid = uid;
+    p->gid = uid;
+    safestrcpy(p->username, user, sizeof(p->username)); // Bug 3 fix: store username
+    audit_log(p->pid, uid, SYS_login, ticks);
+  } else {
+    audit_log(p->pid, -1, SYS_login, ticks);
+  }
+  return uid;
+
+}
+// whoami() -> current uid
+uint64
+sys_whoami(void)
+{
+  return myproc()->uid;
+}
+
+// audit_read(buf, max) -> number of entries written, -1 if not admin
+uint64
+sys_audit_read(void)
+{
+  uint64 addr;
+  int max;
+  argaddr(0, &addr);
+  argint(1, &max);
+  return audit_read_entries(addr, max, myproc());
+}
+
+uint64
+sys_useradd(void)
+{
+  char username[16];
+  char password[32];
+  argstr(0, username, sizeof(username));
+  argstr(1, password, sizeof(password));
+  if (myproc()->uid != 0) return -1;
+  return useradd(username, password);
+}
+
+uint64
+sys_userdel(void)
+{
+  char username[16];
+  argstr(0, username, sizeof(username));
+  if (myproc()->uid != 0) return -1;
+  return userdel(username);
+}
+
+uint64
+sys_passwd(void)
+{
+  char username[16];
+  char password[32];
+  argstr(0, username, sizeof(username));
+  argstr(1, password, sizeof(password));
+  int caller_uid = myproc()->uid;
+  int target_uid = get_uid_by_username(username);
+  if (caller_uid != 0 && caller_uid != target_uid) return -1;
+  return passwd(username, password);
 }

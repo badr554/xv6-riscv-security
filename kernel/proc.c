@@ -223,7 +223,10 @@ userinit(void)
 
   p = allocproc();
   initproc = p;
-  
+	
+  p->uid = 0;
+p->gid = 0;
+safestrcpy(p->username, "admin", sizeof(p->username));
   p->cwd = namei("/");
 
   p->state = RUNNABLE;
@@ -289,6 +292,10 @@ kfork(void)
   np->cwd = idup(p->cwd);
 
   safestrcpy(np->name, p->name, sizeof(p->name));
+  np->uid = p->uid;                                          // Bug 2 fix: inherit uid
+  np->gid = p->gid;                                          // Bug 2 fix: inherit gid
+  safestrcpy(np->username, p->username, sizeof(p->username)); // Bug 2 fix: inherit username
+
 
   pid = np->pid;
 

@@ -271,6 +271,18 @@ create(char *path, short type, short major, short minor)
   ip->major = major;
   ip->minor = minor;
   ip->nlink = 1;
+  
+  // Set default security metadata
+  struct proc *p = myproc();
+  ip->uid = p ? p->uid : 0;
+  ip->gid = p ? p->gid : 0;
+  if(type == T_DEVICE)
+    ip->mode = 0666; // Allow everyone to read/write to console
+  else if(type == T_DIR)
+    ip->mode = 0755;
+  else
+    ip->mode = 0644;
+
   iupdate(ip);
 
   if(type == T_DIR){  // Create . and .. entries.
@@ -340,6 +352,15 @@ sys_open(void)
     end_op();
     return -1;
   }
+
+  // --- PERMISSION CHECK ---
+  int write_mode = (omode & O_WRONLY) || (omode & O_RDWR);
+  if(checkperm(ip, write_mode) < 0){
+    iunlockput(ip);
+    end_op();
+    return -1;
+  }
+  // ------------------------
 
   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
     if(f)
@@ -501,5 +522,49 @@ sys_pipe(void)
     fileclose(wf);
     return -1;
   }
+  return 0;
+}
+
+uint64
+sys_chmod(void)
+{
+  char path[MAXPATH];
+  int mode;
+  struct inode *ip;
+  argstr(0, path, MAXPATH);
+  argint(1, &mode);
+  begin_op();
+  if((ip = namei(path)) == 0){ end_op(); return -1; }
+  ilock(ip);
+  struct proc *p = myproc();
+  if(p->uid != 0 && p->uid != ip->uid){
+    iunlockput(ip); end_op(); return -1;
+  }
+  ip->mode = mode;
+  iupdate(ip);
+  iunlockput(ip);
+  end_op();
+  return 0;
+}
+
+uint64
+sys_chown(void)
+{
+  char path[MAXPATH];
+  int uid, gid;
+  struct inode *ip;
+  argstr(0, path, MAXPATH);
+  argint(1, &uid);
+  argint(2, &gid);
+  struct proc *p = myproc();
+  if(p->uid != 0) return -1;
+  begin_op();
+  if((ip = namei(path)) == 0){ end_op(); return -1; }
+  ilock(ip);
+  ip->uid = uid;
+  ip->gid = gid;
+  iupdate(ip);
+  iunlockput(ip);
+  end_op();
   return 0;
 }

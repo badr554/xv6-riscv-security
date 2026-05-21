@@ -114,10 +114,14 @@ fileread(struct file *f, uint64 addr, int n)
   if(f->type == FD_PIPE){
     r = piperead(f->pipe, addr, n);
   } else if(f->type == FD_DEVICE){
+    if(checkperm(f->ip, 0) < 0)
+      return -1;
     if(f->major < 0 || f->major >= NDEV || !devsw[f->major].read)
       return -1;
     r = devsw[f->major].read(1, addr, n);
   } else if(f->type == FD_INODE){
+    if(checkperm(f->ip, 0) < 0)
+    return -1;
     ilock(f->ip);
     if((r = readi(f->ip, 1, addr, f->off, n)) > 0)
       f->off += r;
@@ -142,10 +146,14 @@ filewrite(struct file *f, uint64 addr, int n)
   if(f->type == FD_PIPE){
     ret = pipewrite(f->pipe, addr, n);
   } else if(f->type == FD_DEVICE){
+    if(checkperm(f->ip, 1) < 0)
+      return -1;
     if(f->major < 0 || f->major >= NDEV || !devsw[f->major].write)
       return -1;
     ret = devsw[f->major].write(1, addr, n);
   } else if(f->type == FD_INODE){
+    if(checkperm(f->ip, 1) < 0)
+      return -1;
     // write a few blocks at a time to avoid exceeding
     // the maximum log transaction size, including
     // i-node, indirect block, allocation blocks,

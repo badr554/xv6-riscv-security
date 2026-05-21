@@ -44,6 +44,9 @@ kexec(char *path, char **argv)
   }
   ilock(ip);
 
+  if(checkperm(ip, 0) < 0)
+    goto bad;
+
   // Read the ELF header.
   if(readi(ip, 0, (uint64)&elf, 0, sizeof(elf)) != sizeof(elf))
     goto bad;
@@ -91,7 +94,12 @@ kexec(char *path, char **argv)
   sz = sz1;
   uvmclear(pagetable, sz-(USERSTACK+1)*PGSIZE);
   sp = sz;
-  stackbase = sp - USERSTACK*PGSIZE;
+
+// ASLR: randomize stack pointer using system ticks
+extern uint ticks;
+sp -= (ticks % 16) * 16;
+
+stackbase = sp - USERSTACK*PGSIZE;
 
   // Copy argument strings into new stack, remember their
   // addresses in ustack[].

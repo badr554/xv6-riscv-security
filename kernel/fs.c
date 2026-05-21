@@ -235,6 +235,9 @@ iupdate(struct inode *ip)
   dip->major = ip->major;
   dip->minor = ip->minor;
   dip->nlink = ip->nlink;
+  dip->mode = ip->mode;
+  dip->uid = ip->uid;
+  dip->gid = ip->gid;
   dip->size = ip->size;
   memmove(dip->addrs, ip->addrs, sizeof(ip->addrs));
   log_write(bp);
@@ -308,6 +311,9 @@ ilock(struct inode *ip)
     ip->major = dip->major;
     ip->minor = dip->minor;
     ip->nlink = dip->nlink;
+    ip->mode = dip->mode;
+    ip->uid = dip->uid;
+    ip->gid = dip->gid;
     ip->size = dip->size;
     memmove(ip->addrs, dip->addrs, sizeof(ip->addrs));
     brelse(bp);
@@ -718,3 +724,25 @@ nameiparent(char *path, char *name)
 {
   return namex(path, 1, name);
 }
+// Returns 0 if the current process may access ip.
+// write=0 means read, write=1 means write.
+// Admin (uid=0) bypasses all checks.
+int
+checkperm(struct inode *ip, int write)
+{
+struct proc *p = myproc();
+if(p == 0) return 0; // kernel context
+if(p->uid == 0) return 0; // admin always allowed
+int mode = ip->mode;
+if(p->uid == ip->uid){
+// owner bits: bit 8 = read, bit 7 = write
+if(!write && !(mode & 0400)) return -1;
+if( write && !(mode & 0200)) return -1;
+} else {
+// others bits: bit 2 = read, bit 1 = write
+if(!write && !(mode & 0004)) return -1;
+if( write && !(mode & 0002)) return -1;
+}
+return 0;
+}
+

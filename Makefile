@@ -3,6 +3,8 @@ U=user
 
 OBJS = \
   $K/entry.o \
+  $K/passwd.o \
+  $K/audit.o \
   $K/start.o \
   $K/console.o \
   $K/printf.o \
@@ -127,6 +129,10 @@ mkfs/mkfs: mkfs/mkfs.c $K/fs.h $K/param.h
 
 UPROGS=\
 	$U/_cat\
+	$U/_login\
+	$U/_auditdemo\
+	$U/_permtest\
+	$U/_compliance_test\
 	$U/_echo\
 	$U/_forktest\
 	$U/_grep\
@@ -142,9 +148,18 @@ UPROGS=\
 	$U/_grind\
 	$U/_wc\
 	$U/_zombie\
+	$U/_useradd\
+	$U/_userdel\
+	$U/_passwd\
+	$U/_whoami\
 	$U/_logstress\
 	$U/_forphan\
 	$U/_dorphan\
+	$U/_check_aslr\
+	$U/_victim\
+	$U/_exploit\
+	$U/_chmod\
+	$U/_chown\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

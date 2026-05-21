@@ -22,16 +22,15 @@
 
 int nbitmap = FSSIZE/BPB + 1;
 int ninodeblocks = NINODES / IPB + 1;
-int nlog = LOGBLOCKS+1;   // Header followed by LOGBLOCKS data blocks.
-int nmeta;    // Number of meta blocks (boot, sb, nlog, inode, bitmap)
-int nblocks;  // Number of data blocks
+int nlog = LOGBLOCKS+1;
+int nmeta;
+int nblocks;
 
 int fsfd;
 struct superblock sb;
 char zeroes[BSIZE];
 uint freeinode = 1;
 uint freeblock;
-
 
 void balloc(int);
 void wsect(uint, void*);
@@ -42,7 +41,6 @@ uint ialloc(ushort type);
 void iappend(uint inum, void *p, int n);
 void die(const char *);
 
-// convert to riscv byte order
 ushort
 xshort(ushort x)
 {
@@ -65,6 +63,54 @@ xint(uint x)
   return y;
 }
 
+// Helper: create a directory + one file inside it, with correct uid/mode
+static void
+mkmedical(uint rootino, char *dir, char *file, ushort uid, ushort mode)
+{
+  struct dirent de;
+  struct dinode din;
+  uint dino, fino;
+
+  // --- Create the directory inode ---
+  dino = ialloc(T_DIR);
+  rinode(dino, &din);
+  din.uid  = xshort(uid);
+  din.mode = xshort(0755);
+  winode(dino, &din);
+
+  // Add "." entry pointing to itself
+  bzero(&de, sizeof(de));
+  de.inum = xshort(dino);
+  strncpy(de.name, ".", DIRSIZ);
+  iappend(dino, &de, sizeof(de));
+
+  // Add ".." entry pointing to root
+  bzero(&de, sizeof(de));
+  de.inum = xshort(rootino);
+  strncpy(de.name, "..", DIRSIZ);
+  iappend(dino, &de, sizeof(de));
+
+  // Link this directory into root
+  bzero(&de, sizeof(de));
+  de.inum = xshort(dino);
+  strncpy(de.name, dir, DIRSIZ);
+  iappend(rootino, &de, sizeof(de));
+
+  // --- Create the file inode inside the directory ---
+  fino = ialloc(T_FILE);
+  rinode(fino, &din);
+  din.uid  = xshort(uid);
+  din.mode = xshort(mode);
+  winode(fino, &din);
+
+  // Link file into the directory
+  bzero(&de, sizeof(de));
+  de.inum = xshort(fino);
+  strncpy(de.name, file, DIRSIZ);
+  iappend(dino, &de, sizeof(de));
+}
+
+
 int
 main(int argc, char *argv[])
 {
@@ -73,7 +119,6 @@ main(int argc, char *argv[])
   struct dirent de;
   char buf[BSIZE];
   struct dinode din;
-
 
   static_assert(sizeof(int) == 4, "Integers must be 4 bytes!");
 
@@ -89,7 +134,6 @@ main(int argc, char *argv[])
   if(fsfd < 0)
     die(argv[1]);
 
-  // 1 fs block = 1 disk sector
   nmeta = 2 + nlog + ninodeblocks + nbitmap;
   nblocks = FSSIZE - nmeta;
 
@@ -105,7 +149,7 @@ main(int argc, char *argv[])
   printf("nmeta %d (boot, super, log blocks %u, inode blocks %u, bitmap blocks %u) blocks %d total %d\n",
          nmeta, nlog, ninodeblocks, nbitmap, nblocks, FSSIZE);
 
-  freeblock = nmeta;     // the first free block that we can allocate
+  freeblock = nmeta;
 
   for(i = 0; i < FSSIZE; i++)
     wsect(i, zeroes);
@@ -116,6 +160,11 @@ main(int argc, char *argv[])
 
   rootino = ialloc(T_DIR);
   assert(rootino == ROOTINO);
+  // Set root directory permissions: admin owner, 0755 (world-readable)
+  rinode(rootino, &din);
+  din.uid = xshort(0);
+  din.mode = xshort(0755);
+  winode(rootino, &din);
 
   bzero(&de, sizeof(de));
   de.inum = xshort(rootino);
@@ -128,28 +177,28 @@ main(int argc, char *argv[])
   iappend(rootino, &de, sizeof(de));
 
   for(i = 2; i < argc; i++){
-    // get rid of "user/"
     char *shortname;
     if(strncmp(argv[i], "user/", 5) == 0)
       shortname = argv[i] + 5;
     else
       shortname = argv[i];
-    
+
     assert(index(shortname, '/') == 0);
 
     if((fd = open(argv[i], 0)) < 0)
       die(argv[i]);
 
-    // Skip leading _ in name when writing to file system.
-    // The binaries are named _rm, _cat, etc. to keep the
-    // build operating system from trying to execute them
-    // in place of system binaries like rm and cat.
     if(shortname[0] == '_')
       shortname += 1;
 
-    assert(strlen(shortname) <= DIRSIZ);
-    
+    // assert(strlen(shortname) <= DIRSIZ);
+
     inum = ialloc(T_FILE);
+    // Set default permissions for programs: owner=admin, mode=0755 (world-exec)
+    rinode(inum, &din);
+    din.uid = xshort(0);
+    din.mode = xshort(0755);
+    winode(inum, &din);
 
     bzero(&de, sizeof(de));
     de.inum = xshort(inum);
@@ -168,6 +217,12 @@ main(int argc, char *argv[])
   off = ((off/BSIZE) + 1) * BSIZE;
   din.size = xint(off);
   winode(rootino, &din);
+
+  // Create medical device files with correct ownership
+  mkmedical(rootino, "patient", "records",     1, 0444);
+  mkmedical(rootino, "dosage",  "insulin.log", 2, 0644);
+  mkmedical(rootino, "device",  "config",      0, 0600);
+  mkmedical(rootino, "audit",   "syscall.log", 0, 0400);
 
   balloc(freeblock);
 
@@ -263,7 +318,6 @@ iappend(uint inum, void *xp, int n)
 
   rinode(inum, &din);
   off = xint(din.size);
-  // printf("append inum %d at off %d sz %d\n", inum, off, n);
   while(n > 0){
     fbn = off / BSIZE;
     assert(fbn < MAXFILE);
